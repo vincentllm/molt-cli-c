@@ -1,0 +1,22 @@
+[package]
+name = "molt-cli-z"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "molt"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+serde_yaml = "0.9"
+inquire = "0.7"
+colored = "2"
+regex = "1"
+uuid = { version = "1", features = ["v4"] }
+dirs = "5"
+anyhow = "1"
