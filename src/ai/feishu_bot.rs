@@ -8,9 +8,9 @@
 /// 注意：body.content 是 JSON string，需二次解析；create_time 是毫秒时间戳
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
-use std::io::Write;
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
@@ -261,8 +261,19 @@ fn check_feishu_response(resp: reqwest::blocking::Response) -> Result<()> {
     Ok(())
 }
 
+fn make_spinner(msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb.set_style(
+        ProgressStyle::with_template("   {spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]),
+    );
+    pb.set_message(msg.to_string());
+    pb
+}
+
 /// 轮询消息列表，找到含 marker 字符串的回复
-/// send_time_ms: 发送请求时的毫秒时间戳，用于过滤历史消息
 fn poll_for_marker(
     client: &Client,
     token: &str,
@@ -272,26 +283,21 @@ fn poll_for_marker(
     send_time_ms: u64,
 ) -> Result<String> {
     let url = build_message_list_url(chat_id, send_time_ms);
+    let spinner = make_spinner("等待飞书 Bot 回复...");
     let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
-    let mut dots = 0u32;
 
     while std::time::Instant::now() < deadline {
         thread::sleep(Duration::from_secs(3));
-        dots += 1;
-        print!(
-            "\r   {} 等待飞书 Bot 回复{}",
-            "⏳".yellow(),
-            ".".repeat((dots % 4) as usize + 1)
-        );
-        let _ = std::io::stdout().flush();
+        let elapsed = (std::time::Instant::now().elapsed().as_secs() % timeout_secs) as u64;
+        spinner.set_message(format!("等待飞书 Bot 回复... ({}s)", elapsed));
 
         if let Some(text) = find_text_containing(client, token, &url, marker, send_time_ms) {
-            println!();
+            spinner.finish_with_message(format!("{} 收到回复！", "✅".green()));
             return Ok(text.replace(marker, "").trim().to_string());
         }
     }
 
-    println!();
+    spinner.finish_with_message(format!("{} 超时", "❌".red()));
     bail!("Timeout ({}s): no [MOLT_RESPONSE] from Feishu bot", timeout_secs)
 }
 
@@ -306,22 +312,14 @@ fn poll_for_callback(
 ) -> Result<String> {
     let marker = format!("[MOLT_CALLBACK:{}]", corr_id);
     let url = build_message_list_url(chat_id, send_time_ms);
+    let spinner = make_spinner("等待 ClawBot 回调...");
     let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
-    let mut dots = 0u32;
 
     while std::time::Instant::now() < deadline {
         thread::sleep(Duration::from_secs(3));
-        dots += 1;
-        print!(
-            "\r   {} 等待 ClawBot 回调{}",
-            "⏳".yellow(),
-            ".".repeat((dots % 4) as usize + 1)
-        );
-        let _ = std::io::stdout().flush();
 
         if let Some(text) = find_text_containing(client, token, &url, &marker, send_time_ms) {
-            println!();
-            // 提取 result: 之后的内容
+            spinner.finish_with_message(format!("{} ClawBot 已响应！", "✅".green()));
             let result = text
                 .replace(&marker, "")
                 .trim()
@@ -332,7 +330,7 @@ fn poll_for_callback(
         }
     }
 
-    println!();
+    spinner.finish_with_message(format!("{} 超时", "❌".red()));
     bail!("Timeout ({}s): no [MOLT_CALLBACK] from ClawBot", timeout_secs)
 }
 

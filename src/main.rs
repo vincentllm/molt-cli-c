@@ -9,8 +9,14 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(
     name = "molt",
-    about = "🦞 Molt — Terminal workflow evolution tool",
-    version
+    about = "🦞 Molt — Terminal workflow recorder & ClawBot executor",
+    version,
+    after_help = "  Examples:\n\
+                  \x20   molt record          Start recording\n\
+                  \x20   molt mark -l setup   Drop a named anchor\n\
+                  \x20   molt stop            Stop + AI-extract pipeline\n\
+                  \x20   molt stats           View recording analytics\n\
+                  \x20   molt run <name>      Execute a saved pipeline"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -21,17 +27,27 @@ struct Cli {
 enum Commands {
     /// Start recording your terminal session via asciinema
     Record,
-    /// Drop a semantic marker into the recording
+
+    /// Drop a semantic anchor into the recording
     Mark {
-        /// Optional label for this marker
+        /// Label for this marker (e.g. "deploy", "setup")
         #[arg(short, long)]
         label: Option<String>,
     },
-    /// Stop recording and show what was captured
+
+    /// Stop recording, extract pipeline via AI, save YAML
     Stop,
-    /// Run a saved pipeline
+
+    /// Show stats for the last (or specified) recording
+    Stats {
+        /// Path to a .cast file (default: /tmp/molt_session.cast)
+        #[arg(short, long)]
+        file: Option<String>,
+    },
+
+    /// Execute a saved pipeline (local or via ClawBot)
     Run {
-        /// Pipeline name or ID
+        /// Pipeline name (from ~/.molt/pipelines/)
         name: String,
     },
 }
@@ -43,6 +59,7 @@ fn main() {
         Commands::Record => commands::record::run(),
         Commands::Mark { label } => commands::mark::run(label),
         Commands::Stop => commands::stop::run(),
+        Commands::Stats { file } => commands::stats::run(file.as_deref()),
         Commands::Run { name } => commands::run_pipeline::run(&name),
     }
 }

@@ -3,6 +3,9 @@ use inquire::{Confirm, Select, Text};
 use std::fs;
 use std::process::{Command, Stdio};
 
+use indicatif::{ProgressBar, ProgressStyle};
+use std::time::Duration;
+
 use crate::ai::build_backend;
 use crate::ai::feishu_bot::FeishuBotBackend;
 use crate::cast_parser::{parse_cast, MarkSlice, CAST_FILE};
@@ -38,13 +41,34 @@ pub fn run() {
     let config = load_or_prompt_config();
     let backend = build_backend(&config.backend);
 
-    // ── 4. 调用 AI 提取 ───────────────────────────────────────────────
+    // ── 4. 调用 AI 提取（Direct LLM 时显示 spinner，Feishu 有自己的 spinner）────
     let backend_name = backend_display_name(&config.backend);
-    println!("\n{} 正在通过 {} 提取 Pipeline...", "🤖".cyan(), backend_name.yellow());
+    println!();
+
+    let spinner = if matches!(config.backend, crate::config::BackendConfig::DirectLlm { .. }) {
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.set_style(
+            ProgressStyle::with_template("   {spinner:.cyan} {msg}")
+                .unwrap()
+                .tick_strings(&["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]),
+        );
+        pb.set_message(format!("正在通过 {} 提取 Pipeline...", backend_name.yellow()));
+        Some(pb)
+    } else {
+        println!("{} 正在通过 {} 提取 Pipeline...", "🤖".cyan(), backend_name.yellow());
+        None
+    };
 
     let raw_response = match backend.extract_pipeline(&slices) {
-        Ok(r) => r,
+        Ok(r) => {
+            if let Some(pb) = &spinner {
+                pb.finish_with_message(format!("{} Pipeline 提取完成", "✅".green()));
+            }
+            r
+        }
         Err(e) => {
+            if let Some(pb) = &spinner { pb.finish_with_message(format!("{} 提取失败", "❌".red())); }
             eprintln!("{} AI 提取失败: {}", "❌".red(), e);
             eprintln!("   提示：可检查 ~/.molt/config.yaml 中的配置");
             std::process::exit(1);

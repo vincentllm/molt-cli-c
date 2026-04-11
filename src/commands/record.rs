@@ -1,3 +1,4 @@
+use colored::Colorize;
 use std::fs;
 use std::process::{Command, Stdio};
 
@@ -43,8 +44,7 @@ pub fn run() {
         Ok(child) => {
             let pid = child.id();
             fs::write(PID_FILE, pid.to_string()).expect("Cannot write PID file");
-            // asciinema rec 会接管终端，此处不输出避免污染录制
-            // 标题栏状态通过 MOLT_MARK 机制更新
+            print_recording_banner();
             let _ = update_title(0);
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -58,6 +58,20 @@ pub fn run() {
             std::process::exit(1);
         }
     }
+}
+
+fn print_recording_banner() {
+    let border = "─".repeat(50);
+    println!();
+    println!("  ╭{}╮", border);
+    println!("  │  {}{}│", "🦞 Recording started".green().bold(), " ".repeat(28));
+    println!("  │{}│", " ".repeat(52));
+    println!("  │  {}{}│", format!("File  {}", CAST_FILE).cyan(), " ".repeat(50 - 6 - CAST_FILE.len()));
+    println!("  │{}│", " ".repeat(52));
+    println!("  │  {}{}│", "molt mark -l <label>   drop an anchor".dimmed(), " ".repeat(13));
+    println!("  │  {}{}│", "molt stop              finish + extract".dimmed(), " ".repeat(12));
+    println!("  ╰{}╯", border);
+    println!();
 }
 
 /// 更新终端标题栏显示录制状态
