@@ -4,6 +4,7 @@ use std::fs;
 use std::process::{Command, Stdio};
 
 use crate::ai::build_backend;
+use crate::ai::feishu_bot::FeishuBotBackend;
 use crate::cast_parser::{parse_cast, MarkSlice, CAST_FILE};
 use crate::config::{BackendConfig, MoltConfig};
 use crate::pipeline::{extract_yaml_from_response, parse_pipeline_yaml, save_pipeline};
@@ -104,21 +105,44 @@ pub fn run() {
     pipeline.name = name.clone();
     pipeline.created_at = chrono::Utc::now().to_rfc3339();
 
+    let step_count = pipeline.steps.len();
     match save_pipeline(&pipeline) {
         Ok(path) => {
+            let path_str = path.display().to_string();
             println!(
                 "\n{} 已保存: {}\n",
                 "✅".green(),
-                path.display().to_string().cyan()
+                path_str.cyan()
             );
-            println!(
-                "   运行: {}",
-                format!("molt run {}", name).green().bold()
-            );
+            println!("   运行: {}", format!("molt run {}", name).green().bold());
+
+            // 如果配置的是 DirectLlm，但用户也有 Feishu 配置，发通知卡片
+            // 如果本来就是 Feishu 后端，也发通知卡片（通知群组）
+            send_feishu_notification_if_configured(&name, step_count, &path_str, &config);
         }
         Err(e) => {
             eprintln!("{} 保存失败: {}", "❌".red(), e);
             std::process::exit(1);
+        }
+    }
+}
+
+fn send_feishu_notification_if_configured(
+    pipeline_name: &str,
+    step_count: usize,
+    path: &str,
+    config: &MoltConfig,
+) {
+    if let BackendConfig::FeishuBot { app_id, app_secret, chat_id, poll_timeout_secs } = &config.backend {
+        let fb = FeishuBotBackend {
+            app_id: app_id.clone(),
+            app_secret: app_secret.clone(),
+            chat_id: chat_id.clone(),
+            poll_timeout_secs: *poll_timeout_secs,
+        };
+        match fb.notify_pipeline_saved(pipeline_name, step_count, path) {
+            Ok(_) => println!("   {} 飞书通知已发送", "🔔".cyan()),
+            Err(e) => println!("   {} 飞书通知发送失败（不影响结果）: {}", "⚠️".yellow(), e),
         }
     }
 }
