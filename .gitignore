@@ -1,1 +1,32 @@
-/target
+# ── Rust build artifacts ──────────────────────────────────────────
+/target/
+**/*.rs.bk
+
+# ── Secrets & credentials (NEVER commit these) ────────────────────
+.env
+.env.*
+*.key
+*.pem
+*.secret
+secrets.yaml
+secrets.toml
+
+# ── Molt runtime state (generated at runtime, machine-local) ──────
+# Note: ~/.molt/config.yaml lives outside this repo — safe by design.
+# The entries below guard against accidental copies inside the repo.
+config.yaml
+molt-session.cast
+molt-session.pid
+
+# ── Editor & OS artifacts ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# ── CI / package artifacts ────────────────────────────────────────
+dist/
+*.tar.gz
+*.zip

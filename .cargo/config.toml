@@ -1,5 +1,17 @@
-[build]
-target = "x86_64-pc-windows-gnu"
+# ──────────────────────────────────────────────────────────────────
+# Molt — Cargo build configuration
+# ──────────────────────────────────────────────────────────────────
+#
+# Linux / macOS: no configuration needed, `cargo build` works directly.
+#
+# Windows (GNU toolchain):
+#   1. Install msys2: https://www.msys2.org/
+#   2. In MSYS2 terminal: pacman -S mingw-w64-x86_64-gcc
+#   3. Install Rust GNU target: rustup target add x86_64-pc-windows-gnu
+#   4. Build with: rustup run stable-x86_64-pc-windows-gnu cargo build
+#
+# The section below provides the GNU linker path for Windows builds.
+# It is ignored on Linux/macOS.
 
 [target.x86_64-pc-windows-gnu]
 linker = "C:/msys64/mingw64/bin/gcc.exe"
