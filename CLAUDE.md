@@ -26,7 +26,7 @@ There are no automated tests. To manually test a command after building:
 Molt is a three-phase CLI: **record → extract → execute**.
 
 **Phase 1 — Record** (`molt record` / `molt mark` / `molt stop`):  
-`molt record` spawns `asciinema rec /tmp/molt_session.cast` and writes its PID to `/tmp/molt_session.pid`. `molt mark` echoes `MOLT_MARK <index> <ISO8601> [label]` to stdout, which asciinema captures inline — no IPC. `molt stop` sends SIGTERM to that PID.
+On Unix, `molt record` spawns a native PTY session (`recording/pty_session.rs`) and writes the **recorder's own PID** (not the shell's) to `/tmp/molt_session.pid`. `molt stop` sends SIGTERM to that PID; the recorder's handler converts it to SIGHUP on the child shell (interactive bash/zsh ignore SIGTERM but respond to SIGHUP). On Windows, `asciinema rec` is used as a fallback. `molt mark` echoes `MOLT_MARK <index> <ISO8601> [label]` to stdout, captured inline — no IPC.
 
 **Phase 2 — Extract** (`molt stop` continued):  
 `src/recording/cast.rs` parses the `.cast` file (asciinema v2 format) into `MarkSlice` structs split at each `MOLT_MARK`. Each slice is ANSI-stripped and truncated to 2000 chars. These slices go to `AiBackend::extract_pipeline()` which returns raw AI text; `pipeline::store::extract_yaml_from_response()` pulls the YAML block out.
@@ -43,7 +43,10 @@ src/
   session.rs        — /tmp path constants (CAST_FILE, PID_FILE, MARK_COUNT_FILE)
   history.rs        — RunRecord / StepRecord structs, append_run(), load_history()
   recording/
-    cast.rs         — parse_cast() → Vec<MarkSlice>; MOLT_MARK regex split
+    cast.rs         — parse_cast() → Vec<MarkSlice>; MOLT_MARK regex split; merges VTE snapshots
+    cast_writer.rs  — CastWriter: writes asciinema v2 .cast format (header + [t,"o",data] events)
+    pty_session.rs  — native PTY recorder (Unix only): PTY pair, stdin/stdout threads, VTE feed
+    virtual_screen.rs — VirtualScreen: 2D char grid; handles CUP/EL/ED/scroll/alt-screen/wide-chars
     stats.rs        — CastStats, command histogram, timeline rendering
   pipeline/
     schema.rs       — Pipeline / PipelineStep structs
@@ -71,6 +74,10 @@ src/
 
 **`PipelineStep.cmd` accepts `command:` alias** via `#[serde(alias = "command")]` for backward compatibility with older pipeline files.
 
+**VirtualScreen handles alternate screen buffers.** vim/less/man switch to the alternate screen (`\x1b[?1049h`) and restore main on exit (`\x1b[?1049l`). VirtualScreen maintains two cell grids and swaps them on these private-mode sequences so the alt-screen content never bleeds into main-screen snapshots. In vte 0.13 the `?` byte is passed in `intermediates`, not params.
+
+**AI extraction prefers VTE snapshots over raw ANSI.** `build_extraction_prompt()` uses `slice.screen_snapshot` when present (written to `molt_snapshots.jsonl` by the native PTY recorder at each MOLT_MARK). This gives the LLM clean readable text instead of escape-sequence noise.
+
 ## Runtime data layout
 
 ```
@@ -80,9 +87,10 @@ src/
   history.jsonl        — RunRecord append-only log
 
 /tmp/
-  molt_session.cast    — active asciinema recording
-  molt_session.pid     — asciinema process PID
-  molt_mark_count      — monotonic mark index counter
+  molt_session.cast      — active recording (.cast asciinema v2)
+  molt_session.pid       — recorder process PID (NOT the shell's PID)
+  molt_mark_count        — monotonic mark index counter
+  molt_snapshots.jsonl   — per-mark VTE screen snapshots ({mark_index, timestamp, label, screen})
 ```
 
 ## Adding an AI backend

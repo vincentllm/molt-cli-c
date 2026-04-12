@@ -2,7 +2,8 @@
 ///
 /// Implements enough VT100/ANSI to correctly render 95% of interactive shell
 /// sessions: cursor movement, screen/line erase, scroll regions, character
-/// insert/delete.  SGR (colours/bold) is silently ignored — we only care about
+/// insert/delete, alternate screen buffer (vim/less/man), and Unicode wide
+/// characters.  SGR (colours/bold) is silently ignored — we only care about
 /// character positions for the AI-readable snapshot.
 use vte::{Params, Perform};
 
@@ -10,6 +11,12 @@ pub struct VirtualScreen {
     pub cols: usize,
     pub rows: usize,
     cells: Vec<Vec<char>>,
+    /// Saved main-screen cells while the alternate screen is active.
+    saved_cells: Vec<Vec<char>>,
+    saved_cursor_x: usize,
+    saved_cursor_y: usize,
+    /// True while \x1b[?1049h (alternate screen) is active.
+    using_alt: bool,
     cursor_x: usize,
     cursor_y: usize,
     scroll_top: usize,
@@ -23,6 +30,10 @@ impl VirtualScreen {
             cols,
             rows,
             cells: vec![vec![' '; cols]; rows],
+            saved_cells: vec![vec![' '; cols]; rows],
+            saved_cursor_x: 0,
+            saved_cursor_y: 0,
+            using_alt: false,
             cursor_x: 0,
             cursor_y: 0,
             scroll_top: 0,
@@ -31,14 +42,43 @@ impl VirtualScreen {
     }
 
     /// Render the visible screen as a compact string (empty lines stripped).
+    /// Wide-char placeholder cells ('\0') are filtered out so the output
+    /// contains only real Unicode codepoints.
     pub fn snapshot(&self) -> String {
         self.cells
             .iter()
-            .map(|row| row.iter().collect::<String>())
-            .map(|s| s.trim_end().to_string())
+            .map(|row| row.iter().filter(|&&c| c != '\0').collect::<String>())
+            .map(|s: String| s.trim_end().to_string())
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    // ── alternate screen ──────────────────────────────────────────────────────
+
+    /// Enter alternate screen (\x1b[?1049h): swap cells, save cursor, clear.
+    fn switch_to_alt(&mut self) {
+        if self.using_alt { return; }
+        std::mem::swap(&mut self.cells, &mut self.saved_cells);
+        self.saved_cursor_x = self.cursor_x;
+        self.saved_cursor_y = self.cursor_y;
+        for row in &mut self.cells { *row = vec![' '; self.cols]; }
+        self.cursor_x = 0;
+        self.cursor_y = 0;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+        self.using_alt = true;
+    }
+
+    /// Leave alternate screen (\x1b[?1049l): restore main screen and cursor.
+    fn switch_to_main(&mut self) {
+        if !self.using_alt { return; }
+        std::mem::swap(&mut self.cells, &mut self.saved_cells);
+        self.cursor_x = self.saved_cursor_x;
+        self.cursor_y = self.saved_cursor_y;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows.saturating_sub(1);
+        self.using_alt = false;
     }
 
     // ── private scroll helpers ────────────────────────────────────────────────
@@ -128,11 +168,30 @@ impl Perform for VirtualScreen {
         }
     }
 
-    fn csi_dispatch(&mut self, params: &Params, _intermediates: &[u8], _ignore: bool, action: char) {
+    fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, action: char) {
         // Collect params as u16; missing params default to 0
         let ps: Vec<u16> = params.iter().map(|p| p[0]).collect();
         let p0 = ps.first().copied().unwrap_or(0);
         let p1 = ps.get(1).copied().unwrap_or(0);
+
+        // ── private mode sequences: ESC [ ? <n> h / l ────────────────────────
+        // The `?` byte (0x3F) is passed as an intermediate in vte 0.13.
+        if intermediates == [b'?'] {
+            match action {
+                'h' => {
+                    for &p in &ps {
+                        if p == 1049 { self.switch_to_alt(); }
+                    }
+                }
+                'l' => {
+                    for &p in &ps {
+                        if p == 1049 { self.switch_to_main(); }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
 
         match action {
             // ── cursor positioning ────────────────────────────────────────────
