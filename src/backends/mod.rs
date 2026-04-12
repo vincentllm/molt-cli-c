@@ -48,7 +48,13 @@ pub fn build_extraction_prompt(slices: &[MarkSlice]) -> String {
                 prompt.push_str(&format!("标签: {}\n", label));
             }
         }
-        prompt.push_str(&slice.content);
+        // Prefer the clean VTE screen snapshot over raw ANSI output
+        if let Some(snap) = &slice.screen_snapshot {
+            prompt.push_str("[终端屏幕快照 — 干净可读]\n");
+            prompt.push_str(snap);
+        } else {
+            prompt.push_str(& slice.content);
+        }
         prompt.push_str("\n\n");
     }
 

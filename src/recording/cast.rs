@@ -3,19 +3,46 @@ use serde_json;
 use std::fs;
 
 use super::{molt_mark_re, strip_ansi};
+use crate::session::SNAPSHOTS_FILE;
 
 /// 按 MOLT_MARK 切分的一段录制内容（供 AI 提取使用）
 #[derive(Debug, Clone)]
 pub struct MarkSlice {
     pub mark_index: u32,
     pub label: Option<String>,
-    /// ANSI stripped + truncated (≤2000 chars)
+    /// ANSI-stripped raw terminal output, truncated to ≤2000 chars.
     pub content: String,
+    /// Clean VTE screen snapshot taken at this mark (from native PTY recorder).
+    /// None when recording was done via asciinema subprocess.
+    pub screen_snapshot: Option<String>,
 }
 
 pub fn parse_cast(path: &str) -> Result<Vec<MarkSlice>> {
     let events = read_events(path)?;
-    Ok(build_slices(&events))
+    let mut slices = build_slices(&events);
+    merge_snapshots(&mut slices);
+    Ok(slices)
+}
+
+/// Load per-mark VTE screen snapshots (written by native PTY recorder) and
+/// attach them to the matching MarkSlice entries.  No-op if the file is absent.
+fn merge_snapshots(slices: &mut [MarkSlice]) {
+    let raw = match fs::read_to_string(SNAPSHOTS_FILE) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        if let Ok(obj) = serde_json::from_str::<serde_json::Value>(line) {
+            let idx = obj["mark_index"].as_u64().unwrap_or(0) as u32;
+            if let Some(screen) = obj["screen"].as_str() {
+                if let Some(slice) = slices.iter_mut().find(|s| s.mark_index == idx) {
+                    slice.screen_snapshot = Some(screen.to_string());
+                }
+            }
+        }
+    }
 }
 
 // ── 内部 ──────────────────────────────────────────────────────────────────────
@@ -60,6 +87,7 @@ fn build_slices(events: &[RawEvent]) -> Vec<MarkSlice> {
                     mark_index: current_mark_index,
                     label: current_label.clone(),
                     content: truncate(&buf, 2000),
+                    screen_snapshot: None,
                 });
             }
             current_mark_index = caps[1].parse().unwrap_or(0);
@@ -77,6 +105,7 @@ fn build_slices(events: &[RawEvent]) -> Vec<MarkSlice> {
             mark_index: current_mark_index,
             label: current_label,
             content: truncate(&buf, 2000),
+            screen_snapshot: None,
         });
     }
     slices
