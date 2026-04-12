@@ -5,6 +5,7 @@ pub struct Pipeline {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default)]
     pub created_at: String,
     pub steps: Vec<PipelineStep>,
 }
@@ -14,6 +15,7 @@ pub struct PipelineStep {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mark: Option<u32>,
+    #[serde(alias = "command")]
     pub cmd: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
