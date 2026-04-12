@@ -22,3 +22,8 @@ dirs = "5"
 anyhow = "1"
 indicatif = "0.17"
 comfy-table = "7"
+vte = "0.13"
+
+[target.'cfg(unix)'.dependencies]
+portable-pty = "0.8"
+libc = "0.2"
