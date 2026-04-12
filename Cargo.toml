@@ -28,3 +28,6 @@ unicode-width = "0.1"
 [target.'cfg(unix)'.dependencies]
 portable-pty = "0.8"
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

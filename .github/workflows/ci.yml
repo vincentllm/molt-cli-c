@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # ── Unit tests (pure logic, no PTY) ────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
+
+  # ── Signal / drain integration test ───────────────────────────────────────
+  # Verifies that `molt stop` produces a non-empty, parseable .cast file
+  # after SIGTERM — the exact failure mode that was fixed in pty_session.rs.
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+
+      - name: Record session, stop via SIGTERM, verify cast file
+        run: |
+          set -euo pipefail
+          export MOLT_BIN=./target/release/molt
+          CAST=/tmp/molt_session.cast
+          PID_FILE=/tmp/molt_session.pid
+          rm -f "$CAST" "$PID_FILE"
+
+          # script(1) allocates a real PTY; molt record needs one.
+          # We run it in the background and give it a moment to start.
+          script -q -c "$MOLT_BIN record" /dev/null &
+          SCRIPT_PID=$!
+          sleep 1   # wait for shell + cast header to be written
+
+          # Send SIGTERM to the recorder via its own PID file.
+          RECORDER_PID=$(cat "$PID_FILE" 2>/dev/null || echo "")
+          if [ -z "$RECORDER_PID" ]; then
+            echo "FAIL: PID file not written — recorder never started"
+            exit 1
+          fi
+          kill -TERM "$RECORDER_PID"
+          sleep 1   # give recorder time to drain + flush
+
+          # script itself may still be running; clean it up.
+          kill "$SCRIPT_PID" 2>/dev/null || true
+          wait "$SCRIPT_PID" 2>/dev/null || true
+
+          # Verify cast file is non-empty and has a valid JSON header on line 1.
+          if [ ! -s "$CAST" ]; then
+            echo "FAIL: cast file is empty — SIGTERM drain did not flush"
+            exit 1
+          fi
+          HEADER=$(head -1 "$CAST")
+          if ! echo "$HEADER" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['version']==2" 2>/dev/null; then
+            echo "FAIL: cast file header is not valid asciinema v2 JSON"
+            echo "Header was: $HEADER"
+            exit 1
+          fi
+          echo "PASS: cast file is $(wc -c < "$CAST") bytes, header is valid"

@@ -109,7 +109,13 @@ pub fn start() -> Result<()> {
     // ── Signal handlers ───────────────────────────────────────────────────────
     unsafe {
         libc::signal(libc::SIGWINCH, on_sigwinch as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, on_sigterm as libc::sighandler_t);
+        // Use sigaction with SA_RESTART cleared so that SIGTERM interrupts
+        // the poll() syscall below and wakes up the loop promptly.
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = on_sigterm as libc::sighandler_t;
+        libc::sigemptyset(&mut sa.sa_mask);
+        sa.sa_flags = 0; // no SA_RESTART
+        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
     }
 
     // ── Keyboard forwarding thread (stdin → PTY master) ───────────────────────
@@ -127,29 +133,67 @@ pub fn start() -> Result<()> {
         }
     });
 
+    // PTY master fd used for poll()-based timeouts so STOP_FLAG is checked
+    // every ~100 ms even when the shell is idle (no output coming).
+    let pty_fd = pair.master.as_raw_fd().unwrap_or(-1);
+
     // ── Main read loop: PTY master → stdout + cast + VTE ─────────────────────
     let mut reader = pair.master.try_clone_reader().context("Cannot get PTY reader")?;
     let stdout = std::io::stdout();
     let mut buf = [0u8; 4096];
     let mut line_buf = String::new();
+    // stop_initiated: SIGHUP has been sent; drain_deadline: hard cutoff for drain
+    let mut stop_initiated = false;
+    let mut drain_deadline: Option<std::time::Instant> = None;
 
     loop {
-        // SIGTERM received → send SIGHUP to child shell and exit
-        if STOP_FLAG.load(Ordering::Relaxed) {
+        // SIGTERM received → send SIGHUP to child shell, wait for it to exit,
+        // then let the loop drain remaining PTY output until EIO.
+        if STOP_FLAG.load(Ordering::Relaxed) && !stop_initiated {
+            stop_initiated = true;
             let cpid = CHILD_PID.load(Ordering::Relaxed);
             if cpid > 0 {
                 unsafe { libc::kill(cpid as libc::pid_t, libc::SIGHUP); }
             }
-            // Small drain window so the shell's exit output makes it into .cast
-            std::thread::sleep(std::time::Duration::from_millis(150));
-            break;
+            // Poll child.try_wait() so the PTY master returns EIO promptly.
+            let exit_deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(500);
+            while child.try_wait().ok().flatten().is_none() {
+                if std::time::Instant::now() >= exit_deadline { break; }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            // Allow 200 ms for the kernel to deliver any buffered PTY output.
+            drain_deadline =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(200));
         }
 
-        // SIGWINCH → update PTY size and reset VirtualScreen
-        if RESIZE_FLAG.swap(false, Ordering::Relaxed) {
+        // Hard cutoff: stop draining after the deadline.
+        if let Some(dl) = drain_deadline {
+            if std::time::Instant::now() >= dl { break; }
+        }
+
+        // SIGWINCH → update PTY size and reset VirtualScreen (skip during drain)
+        if !stop_initiated && RESIZE_FLAG.swap(false, Ordering::Relaxed) {
             let (nc, nr) = terminal_size();
             pair.master.resize(PtySize { rows: nr, cols: nc, pixel_width: 0, pixel_height: 0 }).ok();
             screen = VirtualScreen::new(nc as usize, nr as usize);
+        }
+
+        // Poll PTY with 100 ms timeout so the loop top (STOP_FLAG / deadline)
+        // is re-evaluated frequently even when the shell produces no output.
+        if pty_fd >= 0 {
+            let mut pfd = libc::pollfd { fd: pty_fd, events: libc::POLLIN, revents: 0 };
+            let r = unsafe { libc::poll(&mut pfd, 1, 100) };
+            if r < 0 {
+                if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+                    break;
+                }
+                continue; // EINTR from SIGWINCH/SIGTERM — re-check flags
+            }
+            if r == 0 { continue; } // timeout — re-check STOP_FLAG
+            if pfd.revents & libc::POLLIN == 0 {
+                break; // POLLHUP / POLLERR with no data pending
+            }
         }
 
         let n = match reader.read(&mut buf) {
@@ -188,8 +232,9 @@ pub fn start() -> Result<()> {
             }
         }
 
-        // 5 — natural shell exit (try_wait is non-blocking)
-        if matches!(child.try_wait(), Ok(Some(_))) {
+        // 5 — natural shell exit (try_wait is non-blocking).
+        //     Skipped during the SIGHUP drain: the loop will receive EIO naturally.
+        if !stop_initiated && matches!(child.try_wait(), Ok(Some(_))) {
             // Drain any final PTY output
             std::thread::sleep(std::time::Duration::from_millis(50));
             if let Ok(n2) = reader.read(&mut buf) {
@@ -211,7 +256,12 @@ pub fn start() -> Result<()> {
     unsafe {
         restore_raw_mode(saved_termios);
         libc::signal(libc::SIGWINCH, libc::SIG_DFL);
-        libc::signal(libc::SIGTERM, libc::SIG_DFL);
+        // Restore SIGTERM default via sigaction (mirrors the install above).
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = libc::SIG_DFL;
+        libc::sigemptyset(&mut sa.sa_mask);
+        sa.sa_flags = 0;
+        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
     }
 
     let _ = std::fs::remove_file(PID_FILE);
