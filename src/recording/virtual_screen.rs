@@ -209,7 +209,6 @@ impl Perform for VirtualScreen {
                 if self.cursor_y < self.rows {
                     let row = &mut self.cells[self.cursor_y];
                     let at = self.cursor_x.min(self.cols);
-                    let end = (at + n).min(self.cols);
                     row.drain((self.cols - n.min(self.cols))..self.cols);
                     for _ in 0..n.min(self.cols - at) {
                         row.insert(at, ' ');

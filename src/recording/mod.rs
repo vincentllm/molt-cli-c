@@ -1,5 +1,7 @@
 pub mod cast;
 pub mod cast_writer;
+#[cfg(unix)]
+pub mod pty_session;
 pub mod stats;
 pub mod virtual_screen;
 
