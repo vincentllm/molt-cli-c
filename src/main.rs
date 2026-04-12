@@ -17,6 +17,7 @@ use clap::{Parser, Subcommand};
                   \x20   molt record                  Start recording\n\
                   \x20   molt mark -l deploy          Drop a named anchor\n\
                   \x20   molt stop                    Stop + AI-extract pipeline\n\
+                  \x20   molt list                    Show all saved pipelines\n\
                   \x20   molt run                     Interactive pipeline picker\n\
                   \x20   molt run deploy-app          Run by exact name\n\
                   \x20   molt run -v 'deploy staging' Intent matching\n\
@@ -42,6 +43,9 @@ enum Commands {
 
     /// Stop recording, extract pipeline via AI, save YAML
     Stop,
+
+    /// List all saved pipelines
+    List,
 
     /// Show stats for the last (or specified) recording
     Stats {
@@ -87,6 +91,7 @@ fn main() {
         Commands::Record => commands::record::run(),
         Commands::Mark { label } => commands::mark::run(label),
         Commands::Stop => commands::stop::run(),
+        Commands::List => commands::list::run(),
         Commands::Stats { file } => commands::stats::run(file.as_deref()),
         Commands::Run { name, intent, yes, dry_run } => {
             commands::run::run(name.as_deref(), intent.as_deref(), yes, dry_run)

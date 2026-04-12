@@ -330,7 +330,7 @@ fn execute_pipeline(
         started_at,
         ended_at,
         duration_ms,
-        status: pipeline_status,
+        status: pipeline_status.clone(),
         failed_step,
         trigger: trigger.to_string(),
         intent_query: intent_query.map(|s| s.to_string()),
@@ -341,6 +341,34 @@ fn execute_pipeline(
         clawbot_duration_ms: total_clawbot_ms,
     };
     let _ = append_run(&record);
+
+    // Milestone messages (shown after history write so the count includes this run)
+    if !dry_run {
+        show_milestone_if_any(&pipeline.name, &pipeline_status);
+    }
+}
+
+fn show_milestone_if_any(pipeline_name: &str, status: &str) {
+    if status != "success" { return; }
+    let count = crate::history::load_history(3650)
+        .ok()
+        .map(|records| {
+            records
+                .iter()
+                .filter(|r| r.pipeline == pipeline_name && r.status == "success")
+                .count()
+        })
+        .unwrap_or(0);
+
+    let msg = match count {
+        2 => Some("It works again. That's what Molt is for."),
+        5 => Some("You've run this 5 times. It's yours now."),
+        _ => None,
+    };
+
+    if let Some(m) = msg {
+        println!("  {}\n", m.cyan().italic());
+    }
 }
 
 fn execute_step(
