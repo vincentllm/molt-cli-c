@@ -23,6 +23,7 @@ anyhow = "1"
 indicatif = "0.17"
 comfy-table = "7"
 vte = "0.13"
+unicode-width = "0.1"
 
 [target.'cfg(unix)'.dependencies]
 portable-pty = "0.8"

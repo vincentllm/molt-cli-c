@@ -5,6 +5,7 @@
 /// insert/delete, alternate screen buffer (vim/less/man), and Unicode wide
 /// characters.  SGR (colours/bold) is silently ignored — we only care about
 /// character positions for the AI-readable snapshot.
+use unicode_width::UnicodeWidthChar;
 use vte::{Params, Perform};
 
 pub struct VirtualScreen {
@@ -133,10 +134,17 @@ impl Perform for VirtualScreen {
             self.scroll_up_region();
             self.cursor_y = self.scroll_bottom;
         }
+        // Display width: CJK/emoji wide chars occupy 2 columns.
+        // The continuation cell is marked '\0' so snapshot() can filter it out
+        // without emitting an extra space character.
+        let width = UnicodeWidthChar::width(c).unwrap_or(1);
         if self.cursor_y < self.rows && self.cursor_x < self.cols {
             self.cells[self.cursor_y][self.cursor_x] = c;
+            if width == 2 && self.cursor_x + 1 < self.cols {
+                self.cells[self.cursor_y][self.cursor_x + 1] = '\0';
+            }
         }
-        self.cursor_x += 1;
+        self.cursor_x += width;
     }
 
     fn execute(&mut self, byte: u8) {

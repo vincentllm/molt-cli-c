@@ -46,7 +46,9 @@ src/
     cast.rs         — parse_cast() → Vec<MarkSlice>; MOLT_MARK regex split; merges VTE snapshots
     cast_writer.rs  — CastWriter: writes asciinema v2 .cast format (header + [t,"o",data] events)
     pty_session.rs  — native PTY recorder (Unix only): PTY pair, stdin/stdout threads, VTE feed
-    virtual_screen.rs — VirtualScreen: 2D char grid; handles CUP/EL/ED/scroll/alt-screen/wide-chars
+    virtual_screen.rs — VirtualScreen: 2D char grid; handles CUP/EL/ED/scroll/alt-screen; wide-char
+                        cells (CJK/emoji) occupy 2 columns — continuation cell stored as '\0' and
+                        filtered in snapshot() so the LLM sees correct Unicode, not doubled chars
     stats.rs        — CastStats, command histogram, timeline rendering
   pipeline/
     schema.rs       — Pipeline / PipelineStep structs

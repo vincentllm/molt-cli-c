@@ -971,6 +971,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "unicode-width 0.1.14",
  "uuid",
  "vte",
 ]
