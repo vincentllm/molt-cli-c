@@ -20,7 +20,8 @@ impl AiBackend for DirectLlmBackend {
             .build()
             .context("Failed to build HTTP client")?;
 
-        if self.base_url.contains("anthropic.com") || !self.base_url.contains("openai") {
+        // Anthropic native API is the special case; everything else is OpenAI-compat
+        if self.base_url.contains("anthropic.com") {
             call_anthropic(&client, &self.api_key, &self.base_url, &self.model, &prompt)
         } else {
             call_openai_compat(&client, &self.api_key, &self.base_url, &self.model, &prompt)
