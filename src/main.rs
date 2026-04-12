@@ -1,8 +1,9 @@
-mod ai;
-mod cast_parser;
+mod backends;
 mod commands;
 mod config;
 mod pipeline;
+mod recording;
+mod session;
 
 use clap::{Parser, Subcommand};
 
@@ -60,6 +61,6 @@ fn main() {
         Commands::Mark { label } => commands::mark::run(label),
         Commands::Stop => commands::stop::run(),
         Commands::Stats { file } => commands::stats::run(file.as_deref()),
-        Commands::Run { name } => commands::run_pipeline::run(&name),
+        Commands::Run { name } => commands::run::run(&name),
     }
 }

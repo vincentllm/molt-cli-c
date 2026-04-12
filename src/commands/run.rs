@@ -1,9 +1,9 @@
 use colored::Colorize;
 use std::fs;
 
-use crate::ai::feishu_bot::FeishuBotBackend;
+use crate::backends::feishu::FeishuBotBackend;
 use crate::config::{pipelines_dir, BackendConfig, MoltConfig};
-use crate::pipeline::{parse_pipeline_yaml, Pipeline};
+use crate::pipeline::{parse_pipeline_yaml, Pipeline, PipelineStep};
 
 pub fn run(name: &str) {
     let pipeline = load_pipeline(name);
@@ -131,15 +131,10 @@ fn run_with_confirmation(cmd: &str) {
 }
 
 /// 发互动卡片给 ClawBot，等待 [MOLT_CALLBACK:<id>] 回调
-///
-/// ClawBot 收到按钮事件后：
-///   - 执行: 在本机/云端执行命令，回复 "[MOLT_CALLBACK:<id>] result: <输出>"
-///   - 分析: 内部 LLM 分析命令上下文，给出执行建议并回复
-///   - 跳过: 回复 "[MOLT_CALLBACK:<id>] result: skipped"
 fn run_via_feishu_bot(
     fb: &FeishuBotBackend,
     pipeline_name: &str,
-    step: &crate::pipeline::PipelineStep,
+    step: &PipelineStep,
     step_index: usize,
     total_steps: usize,
 ) {

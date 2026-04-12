@@ -6,13 +6,11 @@ use std::process::{Command, Stdio};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 
-use crate::ai::build_backend;
-use crate::ai::feishu_bot::FeishuBotBackend;
-use crate::cast_parser::{parse_cast, MarkSlice, CAST_FILE};
+use crate::backends::{build_backend, feishu::FeishuBotBackend};
 use crate::config::{BackendConfig, MoltConfig};
 use crate::pipeline::{extract_yaml_from_response, parse_pipeline_yaml, save_pipeline};
-
-const PID_FILE: &str = "/tmp/molt_session.pid";
+use crate::recording::{parse_cast, MarkSlice};
+use crate::session::{CAST_FILE, PID_FILE};
 
 pub fn run() {
     // ── 1. 停止 asciinema ──────────────────────────────────────────────

@@ -2,9 +2,7 @@ use colored::Colorize;
 use std::fs;
 use std::process::{Command, Stdio};
 
-const CAST_FILE: &str = "/tmp/molt_session.cast";
-const PID_FILE: &str = "/tmp/molt_session.pid";
-const MARK_COUNT_FILE: &str = "/tmp/molt_mark_count";
+use crate::session::{CAST_FILE, MARK_COUNT_FILE, PID_FILE};
 
 pub fn run() {
     // 检查是否已有录制在运行

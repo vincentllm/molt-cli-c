@@ -1,7 +1,8 @@
 use colored::Colorize;
 use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table, presets};
 
-use crate::cast_parser::{fmt_duration, parse_cast_stats, CastStats, CAST_FILE};
+use crate::recording::{fmt_duration, parse_cast_stats, CastStats};
+use crate::session::CAST_FILE;
 
 pub fn run(path: Option<&str>) {
     let cast_path = path.unwrap_or(CAST_FILE);

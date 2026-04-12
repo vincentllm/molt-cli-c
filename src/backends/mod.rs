@@ -1,15 +1,16 @@
 pub mod direct_llm;
-pub mod feishu_bot;
+pub mod feishu;
 
 use anyhow::Result;
-use crate::cast_parser::MarkSlice;
 use crate::config::BackendConfig;
+use crate::recording::MarkSlice;
 
+/// 所有 AI 提取后端必须实现的 trait
 pub trait AiBackend {
-    /// 发送提取请求，返回原始响应文本（包含 YAML）
     fn extract_pipeline(&self, slices: &[MarkSlice]) -> Result<String>;
 }
 
+/// 根据配置构建对应后端实例
 pub fn build_backend(cfg: &BackendConfig) -> Box<dyn AiBackend> {
     match cfg {
         BackendConfig::DirectLlm { api_key, base_url, model } => {
@@ -20,7 +21,7 @@ pub fn build_backend(cfg: &BackendConfig) -> Box<dyn AiBackend> {
             })
         }
         BackendConfig::FeishuBot { app_id, app_secret, chat_id, poll_timeout_secs } => {
-            Box::new(feishu_bot::FeishuBotBackend {
+            Box::new(feishu::extractor::FeishuBotBackend {
                 app_id: app_id.clone(),
                 app_secret: app_secret.clone(),
                 chat_id: chat_id.clone(),
@@ -30,7 +31,7 @@ pub fn build_backend(cfg: &BackendConfig) -> Box<dyn AiBackend> {
     }
 }
 
-/// 构建发给 AI 的提取 Prompt
+/// 构造发给 AI 的提取 Prompt（对所有后端通用）
 pub fn build_extraction_prompt(slices: &[MarkSlice]) -> String {
     let mut prompt = String::from(
         "你是终端工作流分析专家。\n\
@@ -64,8 +65,8 @@ pub fn build_extraction_prompt(slices: &[MarkSlice]) -> String {
              description: 这步做什么\n\
              executor: local\n\
          ```\n\n\
-         executor 字段值：local（本机执行）/ feishu_bot（委托 ClawBot 执行）/ ask（需人工确认）\n\
-         cmd 字段填写录制中实际出现的命令，不要填 TODO 或注释。",
+         executor: local（本机）/ feishu_bot（委托 ClawBot）/ ask（需人工确认）\n\
+         cmd 填写录制中实际出现的命令，不填 TODO 或注释。",
     );
 
     prompt
