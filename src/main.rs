@@ -1,6 +1,7 @@
 mod backends;
 mod commands;
 mod config;
+mod history;
 mod pipeline;
 mod recording;
 mod session;
@@ -13,11 +14,14 @@ use clap::{Parser, Subcommand};
     about = "🦞 Molt — Terminal workflow recorder & ClawBot executor",
     version,
     after_help = "  Examples:\n\
-                  \x20   molt record          Start recording\n\
-                  \x20   molt mark -l setup   Drop a named anchor\n\
-                  \x20   molt stop            Stop + AI-extract pipeline\n\
-                  \x20   molt stats           View recording analytics\n\
-                  \x20   molt run <name>      Execute a saved pipeline"
+                  \x20   molt record                  Start recording\n\
+                  \x20   molt mark -l deploy          Drop a named anchor\n\
+                  \x20   molt stop                    Stop + AI-extract pipeline\n\
+                  \x20   molt run                     Interactive pipeline picker\n\
+                  \x20   molt run deploy-app          Run by exact name\n\
+                  \x20   molt run -v 'deploy staging' Intent matching\n\
+                  \x20   molt stats                   Recording analytics\n\
+                  \x20   molt recap                   Usage analytics + OpenClaw lift"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -46,10 +50,33 @@ enum Commands {
         file: Option<String>,
     },
 
-    /// Execute a saved pipeline (local or via ClawBot)
+    /// Execute a pipeline — exact name, intent match, or interactive picker
     Run {
-        /// Pipeline name (from ~/.molt/pipelines/)
-        name: String,
+        /// Pipeline name (exact match). Omit for interactive picker.
+        name: Option<String>,
+
+        /// Natural language intent — fuzzy-matches against pipeline names and descriptions
+        #[arg(short = 'v', long, value_name = "QUERY")]
+        intent: Option<String>,
+
+        /// Auto-run without confirmation when match confidence > 80%
+        #[arg(short = 'y', long)]
+        yes: bool,
+
+        /// Show steps without executing (preview mode)
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Usage analytics and OpenClaw capability lift
+    Recap {
+        /// Look-back window in days
+        #[arg(long, default_value = "30")]
+        days: u32,
+
+        /// Filter to a specific pipeline
+        #[arg(long)]
+        pipeline: Option<String>,
     },
 }
 
@@ -61,6 +88,11 @@ fn main() {
         Commands::Mark { label } => commands::mark::run(label),
         Commands::Stop => commands::stop::run(),
         Commands::Stats { file } => commands::stats::run(file.as_deref()),
-        Commands::Run { name } => commands::run::run(&name),
+        Commands::Run { name, intent, yes, dry_run } => {
+            commands::run::run(name.as_deref(), intent.as_deref(), yes, dry_run)
+        }
+        Commands::Recap { days, pipeline } => {
+            commands::recap::run(days, pipeline.as_deref())
+        }
     }
 }
