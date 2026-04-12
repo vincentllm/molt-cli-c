@@ -5,10 +5,9 @@ use std::process::{Command, Stdio};
 use crate::session::{CAST_FILE, MARK_COUNT_FILE, PID_FILE};
 
 pub fn run() {
-    // 检查是否已有录制在运行
+    // Reject double-start
     if let Ok(pid_str) = fs::read_to_string(PID_FILE) {
         let pid = pid_str.trim();
-        // 检查进程是否仍在运行
         let alive = Command::new("kill")
             .args(["-0", pid])
             .stdout(Stdio::null())
@@ -16,21 +15,47 @@ pub fn run() {
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
-
         if alive {
             eprintln!("🦞 Already recording (pid {}). Run `molt stop` first.", pid);
             std::process::exit(1);
         }
     }
 
-    // 清理旧的录制文件
+    // Clean slate
     let _ = fs::remove_file(CAST_FILE);
-    // 重置 mark 计数
-    fs::write(MARK_COUNT_FILE, "0").expect("Cannot write mark count file");
+    fs::write(MARK_COUNT_FILE, "0").expect("Cannot reset mark count");
 
-    // 后台启动 asciinema rec
-    // --stdin: 也录制标准输入（保留原始按键）
-    // --quiet: 不输出额外信息
+    print_recording_banner();
+
+    #[cfg(unix)]
+    start_native();
+
+    #[cfg(not(unix))]
+    start_asciinema();
+}
+
+// ── native PTY (Linux / WSL) ──────────────────────────────────────────────────
+
+#[cfg(unix)]
+fn start_native() {
+    use crate::recording::pty_session;
+    // pty_session::start() blocks until the shell exits.
+    if let Err(e) = pty_session::start() {
+        // Restore a newline after potential raw-mode artifacts
+        println!();
+        eprintln!("{} Recording error: {}", "❌".red(), e);
+        std::process::exit(1);
+    }
+    // Print a clean newline after the PTY session ends
+    println!();
+    println!("{} Recording stopped. Run {} to extract pipeline.",
+        "🦞".green(), "`molt stop`".cyan());
+}
+
+// ── asciinema subprocess fallback (Windows) ───────────────────────────────────
+
+#[cfg(not(unix))]
+fn start_asciinema() {
     let child = Command::new("asciinema")
         .args(["rec", "--quiet", "--stdin", CAST_FILE])
         .stdin(Stdio::inherit())
@@ -42,13 +67,11 @@ pub fn run() {
         Ok(child) => {
             let pid = child.id();
             fs::write(PID_FILE, pid.to_string()).expect("Cannot write PID file");
-            print_recording_banner();
             let _ = update_title(0);
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("❌ `asciinema` not found. Install it first:");
+            eprintln!("❌ `asciinema` not found. On Windows use WSL, or install:");
             eprintln!("   pip install asciinema");
-            eprintln!("   # or: brew install asciinema");
             std::process::exit(1);
         }
         Err(e) => {
@@ -58,7 +81,14 @@ pub fn run() {
     }
 }
 
+// ── shared helpers ────────────────────────────────────────────────────────────
+
 fn print_recording_banner() {
+    #[cfg(unix)]
+    let extra = "  Shell launched inside PTY — type normally.  ";
+    #[cfg(not(unix))]
+    let extra = "  Recording via asciinema — type normally.    ";
+
     let border = "─".repeat(50);
     println!();
     println!("  ╭{}╮", border);
@@ -66,15 +96,15 @@ fn print_recording_banner() {
     println!("  │{}│", " ".repeat(52));
     println!("  │  {}{}│", format!("File  {}", CAST_FILE).cyan(), " ".repeat(50 - 6 - CAST_FILE.len()));
     println!("  │{}│", " ".repeat(52));
+    println!("  │  {}{}│", extra.dimmed(), " ".repeat(52_usize.saturating_sub(extra.len())));
     println!("  │  {}{}│", "molt mark -l <label>   drop an anchor".dimmed(), " ".repeat(13));
     println!("  │  {}{}│", "molt stop              finish + extract".dimmed(), " ".repeat(12));
     println!("  ╰{}╯", border);
     println!();
 }
 
-/// 更新终端标题栏显示录制状态
+/// Update the terminal title bar with current mark count.
 pub fn update_title(mark_count: u32) {
-    // OSC 0 是设置窗口标题的标准转义序列
     print!("\x1b]0;🦞 recording... ({} marks)\x07", mark_count);
 }
 
