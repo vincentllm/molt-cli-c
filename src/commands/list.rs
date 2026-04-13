@@ -42,7 +42,7 @@ pub fn run() {
     pipelines.sort_by(|a, b| a.name.cmp(&b.name));
 
     let sep = "─".repeat(66);
-    println!("\n  {} Saved Pipelines  ({})", "🦞", pipelines.len().to_string().yellow());
+    println!("\n  🦞 Saved Pipelines  ({})", pipelines.len().to_string().yellow());
     println!("  {}", sep.dimmed());
 
     for p in &pipelines {

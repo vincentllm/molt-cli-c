@@ -26,7 +26,7 @@ pub fn run(days: u32, filter_pipeline: Option<&str>) {
     let sep = "━".repeat(66);
 
     println!("\n{}", sep.cyan().bold());
-    println!("  {}  molt recap  ·  last {} days  ·  {}", "🦞", days, today.white().bold());
+    println!("  🦞  molt recap  ·  last {} days  ·  {}", days, today.white().bold());
     println!("{}", sep.cyan().bold());
 
     if records.is_empty() {

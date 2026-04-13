@@ -2,7 +2,7 @@
 ///
 /// 职责：
 ///   - run_step: 发 Interactive Card 请求 ClawBot 执行某个步骤，
-///               等待 [MOLT_CALLBACK:<id>] 回复
+///     等待 [MOLT_CALLBACK:<id>] 回复
 ///   - notify_pipeline_saved: 保存成功后发飞书通知卡片
 use anyhow::{bail, Result};
 use colored::Colorize;

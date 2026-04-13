@@ -413,7 +413,7 @@ fn run_local_step(cmd: &str) -> String {
 }
 
 fn run_ask_step(cmd: &str) -> String {
-    let ok = inquire::Confirm::new(&format!("执行此步骤?"))
+    let ok = inquire::Confirm::new("执行此步骤?")
         .with_default(true)
         .prompt()
         .unwrap_or(false);

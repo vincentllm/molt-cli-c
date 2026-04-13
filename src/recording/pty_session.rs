@@ -18,7 +18,6 @@
 ///      mode, flush the cast file, clean up PID_FILE.
 ///
 /// SIGWINCH is forwarded to the PTY so the shell resizes correctly.
-
 #[cfg(unix)]
 use anyhow::{Context, Result};
 #[cfg(unix)]
@@ -108,11 +107,11 @@ pub fn start() -> Result<()> {
 
     // ── Signal handlers ───────────────────────────────────────────────────────
     unsafe {
-        libc::signal(libc::SIGWINCH, on_sigwinch as libc::sighandler_t);
+        libc::signal(libc::SIGWINCH, on_sigwinch as *const () as libc::sighandler_t);
         // Use sigaction with SA_RESTART cleared so that SIGTERM interrupts
         // the poll() syscall below and wakes up the loop promptly.
         let mut sa: libc::sigaction = std::mem::zeroed();
-        sa.sa_sigaction = on_sigterm as libc::sighandler_t;
+        sa.sa_sigaction = on_sigterm as *const () as libc::sighandler_t;
         libc::sigemptyset(&mut sa.sa_mask);
         sa.sa_flags = 0; // no SA_RESTART
         libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());

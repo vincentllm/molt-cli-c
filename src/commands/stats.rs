@@ -68,7 +68,7 @@ fn print_timeline(s: &CastStats) {
 
     // 画轴 + mark 位置
     let marks: Vec<_> = s.segments.iter().filter(|seg| seg.mark_index > 0).collect();
-    let mut axis: Vec<char> = std::iter::repeat('─').take(width).collect();
+    let mut axis: Vec<char> = std::iter::repeat_n('─', width).collect();
 
     // 标出 mark 位置
     for seg in &marks {
